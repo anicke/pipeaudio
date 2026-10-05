@@ -2,7 +2,6 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::time::SystemTime;
 
 pub struct Entry {
@@ -82,11 +81,7 @@ pub fn wav_duration_secs(path: &Path) -> hound::Result<u64> {
 
 /// Moves a file to the desktop trash, so deleting can be undone.
 pub fn trash(path: &Path) -> bool {
-    Command::new("gio")
-        .arg("trash")
-        .arg(path)
-        .status()
-        .is_ok_and(|status| status.success())
+    ::trash::delete(path).is_ok()
 }
 
 pub fn format_clock(secs: u64) -> String {

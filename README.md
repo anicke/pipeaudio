@@ -21,7 +21,6 @@ saves it as a WAV file.
 
 - Linux with [PipeWire](https://pipewire.org/). PipeAudio runs `pw-record`,
   which on Debian/Ubuntu comes from the `pipewire-bin` package
-- `gio` (from GLib) to move deleted recordings to the trash
 - A Rust toolchain. The version is pinned in `rust-toolchain.toml`, and
   `rustup` installs it automatically
 
