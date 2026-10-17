@@ -10,6 +10,8 @@ saves it as a WAV file.
 
 - One-click (or <kbd>Space</kbd>) recording of system audio output
 - Live waveform, per-channel level meters, elapsed time and file size
+- Optional skipping of leading silence: the file starts when audio does, with
+  a 0.5 s pre-roll so the first note isn't clipped
 - Saves 48 kHz / 16-bit stereo WAV files
 - Crash-safe: the WAV header is kept up to date while recording, so a file
   left behind by a crash is still playable
@@ -39,6 +41,10 @@ build dependencies (Wayland/X11, xkbcommon and Vulkan development headers).
 
 Press the record button or <kbd>Space</kbd> to start. Press it again to stop.
 The recording is saved to the output folder and shows up in the list below.
+
+Turn on *Skip silence at start* to arm the recorder before you press play.
+It waits for audio, and nothing is saved if nothing plays.
+
 Use the folder button to pick a different output folder. Your choice is
 remembered in `~/.config/pipeaudio/output-dir`.
 

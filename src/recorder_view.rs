@@ -7,11 +7,14 @@ use std::time::Duration;
 
 use anyhow::Context as _;
 use gpui_kit::component::notification::Notification;
-use gpui_kit::component::{ActiveTheme, StyledExt, WindowExt, h_flex, v_flex};
+use gpui_kit::component::switch::Switch;
+use gpui_kit::component::{
+    ActiveTheme, Disableable, Sizable, StyledExt, WindowExt, h_flex, v_flex,
+};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
 
-use crate::library::{Entry, format_clock, format_size};
+use crate::library::{self, Entry, format_clock, format_size};
 use crate::library_view::LibraryView;
 use crate::recorder::{
     BITS_PER_SAMPLE, CHANNELS, HISTORY_LEN, LevelSnapshot, Recording, SAMPLE_RATE,
@@ -25,6 +28,8 @@ enum State {
 
 pub struct RecorderView {
     state: State,
+    /// Start the file at the first sound rather than right away.
+    skip_silence: bool,
     /// Where recordings go, and where finished ones are listed.
     library: Entity<LibraryView>,
     _on_quit: Subscription,
@@ -43,6 +48,7 @@ impl RecorderView {
         });
         Self {
             state: State::Idle,
+            skip_silence: library::load_skip_silence(),
             library,
             _on_quit: on_quit,
         }
@@ -61,7 +67,7 @@ impl RecorderView {
     }
 
     fn start(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        match Recording::start(self.library.read(cx).dir()) {
+        match Recording::start(self.library.read(cx).dir(), self.skip_silence) {
             Ok(recording) => {
                 self.state = State::Recording(recording);
                 self.library
@@ -107,15 +113,18 @@ impl RecorderView {
             return;
         };
         let finalize = cx.background_spawn(async move {
-            let path = recording.stop()?;
-            Entry::load(path).context("The recording file is unreadable")
+            (recording.stop()?)
+                .map(|path| Entry::load(path).context("The recording file is unreadable"))
+                .transpose()
         });
         cx.spawn_in(window, async move |this, cx| {
             let result = finalize.await;
             let _ = this.update_in(cx, |this, window, cx| {
                 this.state = State::Idle;
                 let note = match result {
-                    Ok(entry) => {
+                    Ok(None) => Notification::info("No audio played, so no file was saved")
+                        .title("Nothing recorded"),
+                    Ok(Some(entry)) => {
                         let note =
                             Notification::success(entry.name.clone()).title("Recording saved");
                         this.library
@@ -140,12 +149,15 @@ impl RecorderView {
         let record_button = self.render_record_button(cx);
         let theme = cx.theme();
         let recording = self.is_recording();
-        let (elapsed, levels) = match &self.state {
-            State::Recording(r) => (r.elapsed().as_secs(), Some(r.levels())),
-            _ => (0, None),
+        let levels = match &self.state {
+            State::Recording(r) => Some(r.levels()),
+            _ => None,
         };
+        let elapsed = levels.as_ref().map_or(0, |l| l.elapsed.as_secs());
+        let waiting = levels.as_ref().is_some_and(|l| l.waiting);
 
         let (status, status_color) = match self.state {
+            State::Recording(_) if waiting => ("Waiting for audio", theme.info),
             State::Recording(_) => ("Recording", theme.danger),
             State::Saving => ("Saving…", theme.warning),
             State::Idle => ("Ready", theme.success),
@@ -202,7 +214,7 @@ impl RecorderView {
                     .text_size(px(52.))
                     .font_family(theme.mono_font_family.clone())
                     .line_height(px(60.))
-                    .text_color(if recording {
+                    .text_color(if recording && !waiting {
                         theme.foreground
                     } else {
                         theme.muted_foreground
@@ -239,6 +251,21 @@ impl RecorderView {
                     } else {
                         "to start recording"
                     }),
+            )
+            .child(
+                Switch::new("skip-silence")
+                    .small()
+                    .label("Skip silence at start")
+                    .tooltip("Start the file when audio starts playing")
+                    .checked(self.skip_silence)
+                    // Keeps Space bound to recording rather than the switch.
+                    .tab_stop(false)
+                    .disabled(!matches!(self.state, State::Idle))
+                    .on_click(cx.listener(|this, checked: &bool, _, cx| {
+                        this.skip_silence = *checked;
+                        library::save_skip_silence(*checked);
+                        cx.notify();
+                    })),
             )
             .into_any_element()
     }

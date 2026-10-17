@@ -33,24 +33,41 @@ fn default_dir() -> PathBuf {
         .join("PipeAudio")
 }
 
-fn config_file() -> Option<PathBuf> {
-    dirs::config_dir().map(|dir| dir.join("pipeaudio").join("output-dir"))
+fn config_file(name: &str) -> Option<PathBuf> {
+    dirs::config_dir().map(|dir| dir.join("pipeaudio").join(name))
+}
+
+fn load_config(name: &str) -> Option<String> {
+    let value = fs::read_to_string(config_file(name)?).ok()?;
+    Some(value.trim().to_string())
+}
+
+fn save_config(name: &str, value: &str) {
+    if let Some(file) = config_file(name) {
+        let _ = file.parent().map(fs::create_dir_all);
+        let _ = fs::write(file, value);
+    }
 }
 
 /// The output folder chosen last time, or the default one.
 pub fn load_dir() -> PathBuf {
-    config_file()
-        .and_then(|file| fs::read_to_string(file).ok())
-        .map(|dir| PathBuf::from(dir.trim()))
+    load_config("output-dir")
+        .map(PathBuf::from)
         .filter(|dir| !dir.as_os_str().is_empty())
         .unwrap_or_else(default_dir)
 }
 
 pub fn save_dir(dir: &Path) {
-    if let Some(file) = config_file() {
-        let _ = file.parent().map(fs::create_dir_all);
-        let _ = fs::write(file, dir.to_string_lossy().as_bytes());
-    }
+    save_config("output-dir", &dir.to_string_lossy());
+}
+
+/// Whether recordings start at the first sound. Off unless chosen.
+pub fn load_skip_silence() -> bool {
+    load_config("skip-silence").is_some_and(|value| value == "true")
+}
+
+pub fn save_skip_silence(skip: bool) {
+    save_config("skip-silence", if skip { "true" } else { "false" });
 }
 
 /// WAV files in `dir`, newest first.
